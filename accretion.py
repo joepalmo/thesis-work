@@ -27,6 +27,7 @@ import glob
 import scipy.optimize as optimization
 import scipy.interpolate as sinterp
 from sklearn.neighbors import KernelDensity
+import pickle
 
 ################### Mdot Calculations #########################
 
@@ -282,7 +283,7 @@ def Mdot_to_lineflux(Mdot, dist, mass, radius, Av, Rin=5, line=None, A=None, B=N
     B (float) : If you want to input the parameters for your own line flux vs Lacc relationship
     
     Outputs:
-    flux (float) : line flux [erg/(s*cm^2)]?
+    flux (float) : line flux [erg/(s*cm^2)]
     '''
     
     #a & b values pulled directly from the paper
@@ -325,16 +326,76 @@ def Mdot_to_lineflux(Mdot, dist, mass, radius, Av, Rin=5, line=None, A=None, B=N
     return redflux
     
 
-def empiricalMdot(mass, scalefactor=1.87, intercept=7.73):
+def empiricalMdot(mass, scalefactor=1.79941029, intercept=7.99351629):
+    '''
+    This function will empirically estimate a mass accretion rate value using the 
+    
+    Inputs:
+    mass (float) : mass [Msun]
+    
+    Optional:
+    scalefactor (float) : slope of empirical power law fit between mass and mass accretion rate in log space 
+                            (current value is derived from AccDB)
+    intercept (str) :  intercept of empirical power law fit between mass and mass accretion rate in log space 
+                            (current value is derived from AccDB)
+    
+    Outputs:
+    Mdot (float) : empirical mass accretion rate [Msun/yr]
+    '''
+    #Herczeg relation: scalefactor=1.87, intercept=7.73
     Mdot = (mass**scalefactor) / (10**intercept)
     
     return (Mdot)
 
 
+#Load in age to intercept function
+with open('ageinterceptfunc.pickle', 'rb') as f:
+    age_to_intercept_func = pickle.load(f)
+    
+
+def getIntercept(age):
+    '''
+    This function will modify the intercept of the empirical relationship based on the age of the object
+    
+    Inputs:
+    age (float) : age [Myr] 
+    
+    Outputs:
+    intercept (float) : intercept of empirical power law fit between mass and mass accretion rate in log space based on the age
+                        of the object
+    '''
+    return age_to_intercept_func(age)
+    
+def age_intercept_exponential(age, popt=np.array([ 1.48749094,  0.50602283, -8.61059045]), 
+    pcov=np.array([[ 9.66619837e-04,  3.79765397e-04, -2.74220068e-06],
+                   [ 3.79765397e-04,  3.08006780e-04,  1.19773965e-04],
+                   [-2.74220068e-06,  1.19773965e-04,  1.16096209e-04]])):
+    '''
+    This function will modify the intercept of the empirical relationship based on the age of the object, and take into account
+    the uncertainties of the exponential fit between age and intercept
+    
+    Inputs:
+    age (float) : age [Myr] 
+    
+    Optional:
+    popt (array-like) : empirically derived values for a, b, and c in an exponential fit between age and intercept
+    pcov (array-like) :  covariance matrix of the exponential fit
+    
+    Outputs:
+    intercept (float) : intercept of empirical power law fit between mass and mass accretion rate in log space based on the age
+                        of the object
+    '''
+    
+    a_random, b_random, c_random = np.random.multivariate_normal(popt, pcov)
+    
+    return a_random * np.exp(-b_random * age) + c_random
+
+
+
 ################### Object Parameter Estimation #########################
 
 
-#Need to have these models handy
+#Need to have these models handy to derive stellar parameters
 models = glob.glob('StellarParams/Baraffe*txt')
 mesamodels = glob.glob('StellarParams/MESA_*.txt')
 
@@ -491,6 +552,7 @@ def Teff_to_SpTy(teff):
 '''
 ########### 2D Interpolation for Object Parameters ############
 ###### code shown below, functions saved as pickle files ######
+##### This didn't end up being used, the 2D interpolation failed in certain ranges. #####
 
 from astropy.io import ascii, fits
 #Load in the isochrones
@@ -541,11 +603,32 @@ with open('TtoRfunc.pickle', 'rb') as f:
 
 
 def gaussian(x, mu, sigma):
+    '''
+    Builds a gaussian distribution for a parameter using the formula for a gaussian.
+    
+    Inputs:
+    x (array-like) - the x-values used to generate f
+    mu (float) - mean value of the parameter
+    sigma (float) - uncertainty of the parameter
+    
+    Outputs:
+    g (array-like) - a gaussian curve
+    '''
     g = (1/(sigma*np.sqrt(2*np.pi)))*np.exp((-1/2)*(x-mu)**2/sigma)
     return g
     
 def cdf(g, dx):
     cdf = np.cumsum(g) * dx
+    '''
+    Sums all of the values of a gaussian probability distribution function (cdf) to compute its cumulative distribution function 
+    (cdf)
+    
+    Inputs:
+    g (array-like) - a gaussian curve
+    
+    Outputs:
+    dx (float) - the step size of the numerical integration
+    '''
     return cdf
     
 
@@ -632,6 +715,16 @@ def pdf_fit(x, data, kernel='gaussian'):
 ################### IMFs #########################
 
 def MillerScalo1979(m, size):
+    '''
+    This function builds a distribution of masses based on the initial mass function (IMF) derived in Miller-Scalo et al. 1979.
+    
+    Inputs:
+    m (array-like) - range of mass values used to generate the distribution of masses
+    size (int) - the number of values that the user wants in the distribution of masses
+    
+    Outputs:
+    inv (array-like) - a distribution of masses of with size values that follows the Miller-Scalo IMF
+    '''
     x = np.copy(m)
     a1 = 0   # m < 1
     a2 = 2.3  # m > 1
@@ -641,6 +734,17 @@ def MillerScalo1979(m, size):
     return inv
     
 def Romano2005(m, size):
+    '''
+    This function builds a distribution of masses based on the updated Chabrier initial mass function (IMF) derived in
+    Romano et al. 2005.
+    
+    Inputs:
+    m (array-like) - range of mass values used to generate the distribution of masses
+    size (int) - the number of values that the user wants in the distribution of masses
+    
+    Outputs:
+    inv (array-like) - a distribution of masses of with size values that follows the Romano/Chabrier IMF
+    '''
     x = np.copy(m)
     
     # Chabrier IMF info from Romano+ 2005
