@@ -38,7 +38,6 @@ import pickle
 ########################
 ######################## Accretion Object
 
-
 class Accretion:
     '''
     Create an object for storing all of the information in an accretion MC error propagation simulation
@@ -86,10 +85,11 @@ class Accretion:
         
         
         
-    def UVExcessErrorProp(self, SpTyUnc, distUnc, ageUnc, AvUnc, bc, bcUnc, UVExcessUnc, numMC, Rin=5, variability=0, age_scatter=False):
+    def UVExcessErrorProp(self, SpTyUnc, distUnc, ageUnc, AvUnc, bc, bcUnc, UVExcessUnc, numMC, Rin=5, RinUnc=0, variability=0, age_scatter=False):
             #propagate errors forward and obtain uncertainty distributions
             if age_scatter == True:
-                self.shifted_ideal_mdot = a.empiricalMdot(self.mass, intercept=-a.age_to_intercept_func(self.age))
+                #self.shifted_ideal_mdot = a.empiricalMdot(self.mass, intercept=-a.age_to_intercept_func(self.age))
+                self.shifted_ideal_mdot = a.empiricalMdot(self.mass, intercept=-a.age_intercept_exponential(self.age))
                 self.ideal_UVExcess = a.Mdot_to_UVExcess(self.shifted_ideal_mdot, bc, self.dist, self.mass, self.radius, self.Av, self.Rin)
             else:
                 self.ideal_UVExcess = a.Mdot_to_UVExcess(self.ideal_mdot, bc, self.dist, self.mass, self.radius, self.Av, self.Rin)
@@ -133,6 +133,7 @@ class Accretion:
                     self.ageUncDist = np.ones(numMC)*self.age
             else:
                 self.ageUncDist = a.uncdist(x, self.age, ageUnc, numMC)
+                
             if AvUnc == 0:
                 if numMC == 1: 
                     self.AvUncDist = self.Av
@@ -140,23 +141,45 @@ class Accretion:
                     self.AvUncDist = np.ones(numMC)*self.Av
             else:
                 self.AvUncDist = a.uncdist(x, self.Av, AvUnc, numMC)
+                
+            if RinUnc == 0:
+                if numMC == 1: 
+                    self.RinUncDist = Rin
+                else:
+                    self.RinUncDist = np.ones(numMC)*Rin
+            else:
+                self.RinUncDist = a.uncdist(x, Rin, RinUnc, numMC)
 
             self.TeffUncDist = a.SpTy_to_Teff(self.SpTyUncDist)
             self.massUncDist = a.Teff_to_params(self.TeffUncDist, (self.ageUncDist))[0]
             self.radiusUncDist = a.Teff_to_params(self.TeffUncDist, (self.ageUncDist))[1]
-            self.RinUncDist = Rin*self.radiusUncDist
+            self.RinUncDist = self.RinUncDist*self.radiusUncDist
+            #self.RinUncDist = Rin*self.radiusUncDist
             
             
             #Generate synthetic Mdot distribution
             #Generate synthetic Lacc distribution
             self.mdot = a.UVExcess_to_Mdot(self.UVExcessUncDist, self.bcUncDist, self.distUncDist, self.massUncDist, self.radiusUncDist, self.AvUncDist, self.RinUncDist)
             if variability != 0:
+                log_mdot = np.log10(self.mdot)
                 if numMC == 1: 
-                    x=np.linspace(0,1e-6,10000)
-                    self.mdot = a.uncdist(x, self.mdot, variability*self.mdot, numMC)
-                    #self.mdot = np.random.normal(self.mdot, variability*self.mdot, size=numMC)[0]
+                    draw = np.random.normal(log_mdot, variability, size=numMC)[0]
                 else:
-                    self.mdot = np.random.normal(self.mdot, variability*self.mdot, size=numMC)
+                    draw = np.random.normal(log_mdot, variability, size=numMC)
+                
+                self.mdot = 10**draw
+                
+                '''
+                #specify lower and upper bounds for the truncated gaussian
+                lower, upper = 0,1
+                mu, sigma = (self.mdot), (self.mdot*variability)
+                variability_distribution = st.truncnorm(
+                    (lower - mu) / sigma, (upper - mu) / sigma, loc=mu, scale=sigma)
+                if numMC == 1: 
+                    self.mdot = variability_distribution.rvs(numMC)[0]
+                else:
+                    self.mdot = variability_distribution.rvs(numMC)
+                '''
                 
             self.Lacc =  a.Mdot_to_Lacc(self.mdot, self.massUncDist, self.radiusUncDist, self.RinUncDist)
             
@@ -167,7 +190,7 @@ class Accretion:
 
     # not ready            
 
-    def linefluxErrorProp(self, SpTyUnc, distUnc, ageUnc, AvUnc, linefluxUnc, numMC, Rin=5, line=None, A=None, AUnc=None, B=None, BUnc=None, age_scatter=False):
+    def linefluxErrorProp(self, SpTyUnc, distUnc, ageUnc, AvUnc, linefluxUnc, numMC, Rin=5, RinUnc=0, line=None, A=None, AUnc=None, B=None, BUnc=None, variability=0, age_scatter=False):
             #propagate errors forward and obtain uncertainty distributions
             if line == None:
                 A = A
@@ -194,7 +217,8 @@ class Accretion:
                 return
             
             if age_scatter == True:
-                self.shifted_ideal_mdot = a.empiricalMdot(self.mass, intercept=-a.age_to_intercept_func(self.age))
+                #self.shifted_ideal_mdot = a.empiricalMdot(self.mass, intercept=-a.age_to_intercept_func(self.age))
+                self.shifted_ideal_mdot = a.empiricalMdot(self.mass, intercept=-a.age_intercept_exponential(self.age))
                 self.ideal_lineflux = a.Mdot_to_lineflux(self.shifted_ideal_mdot, self.dist, self.mass, self.radius, self.Av, Rin=self.Rin, line=line, A=A, B=B)
             else:
                 self.ideal_lineflux = a.Mdot_to_lineflux(self.ideal_mdot, self.dist, self.mass, self.radius, self.Av, Rin=self.Rin, line=line, A=A, B=B)
@@ -208,8 +232,11 @@ class Accretion:
             x = np.linspace(0, 1000, 100000)
                     
             #add in uncertainties to variables specific to observable
-            self.AUncDist = a.uncdist(x, A, aUnc, numMC) #A
-            self.BUncDist = a.uncdist(x, B, bUnc, numMC) #B
+            #self.AUncDist = a.uncdist(x, A, aUnc, numMC) #A
+            #self.BUncDist = a.uncdist(x, B, bUnc, numMC) #B
+            #Ignore uncertainties of the empirical fit
+            self.AUncDist = A #A
+            self.BUncDist = B #B
             
             #build uncertainty distributions
             if SpTyUnc == 0:
@@ -235,6 +262,7 @@ class Accretion:
                     self.ageUncDist = np.ones(numMC)*self.age
             else:
                 self.ageUncDist = a.uncdist(x, self.age, ageUnc, numMC)
+                
             if AvUnc == 0:
                 if numMC == 1: 
                     self.AvUncDist = self.Av
@@ -242,18 +270,46 @@ class Accretion:
                     self.AvUncDist = np.ones(numMC)*self.Av
             else:
                 self.AvUncDist = a.uncdist(x, self.Av, AvUnc, numMC)
+                
+            if RinUnc == 0:
+                if numMC == 1: 
+                    self.RinUncDist = Rin
+                else:
+                    self.RinUncDist = np.ones(numMC)*Rin
+            else:
+                self.RinUncDist = a.uncdist(x, Rin, RinUnc, numMC)
             
+            
+            self.TeffUncDist = a.SpTy_to_Teff(self.SpTyUncDist)
+            self.massUncDist = a.Teff_to_params(self.TeffUncDist, (self.ageUncDist))[0]
+            self.radiusUncDist = a.Teff_to_params(self.TeffUncDist, (self.ageUncDist))[1]
+            self.RinUncDist = self.RinUncDist*self.radiusUncDist
             
             #Generate synthetic Mdot distribution
             #Generate synthetic Lacc distribution
             self.mdot = a.lineflux_to_Mdot(self.linefluxUncDist, self.distUncDist, self.massUncDist, self.radiusUncDist, self.AvUncDist, Rin=self.RinUncDist, A=self.AUncDist, B=self.BUncDist)
+            if variability != 0:
+                #specify lower and upper bounds for the truncated gaussian
+                lower, upper = 0,1
+                mu, sigma = (self.mdot), (self.mdot*variability)
+                variability_distribution = st.truncnorm(
+                    (lower - mu) / sigma, (upper - mu) / sigma, loc=mu, scale=sigma)
+                if numMC == 1: 
+                    self.mdot = variability_distribution.rvs(numMC)[0]
+                else:
+                    self.mdot = variability_distribution.rvs(numMC)
+            
             self.Lacc =  a.Mdot_to_Lacc(self.mdot, self.massUncDist, self.radiusUncDist, self.RinUncDist)
+
+
 
 
 
 ########################
 ########################
 ########################Accretion Distribution Object
+
+##bootstrap This object represents a distribution of accreting objects
 
 class AccretionDistribution:
     '''
@@ -370,14 +426,13 @@ class AccretionDistribution:
     def Av_from_gaussian(self, size, mu, sigma):
         self.Avs = np.random.normal(mu, sigma, size=size)
         
-    
-    def UVExcessErrorProp(self, SpTyUnc, distUnc, ageUnc, AvUnc, bc, bcUnc, UVExcessUnc, numMC, Rin=5, variability=0, age_scatter=False):
+    def UVExcessErrorProp(self, SpTyUnc, distUnc, ageUnc, AvUnc, bc, bcUnc, UVExcessUnc, numMC, Rin=5, RinUnc=0,  variability=0, age_scatter=False):
         for acc in self.accretion_distribution:
-            acc.UVExcessErrorProp(SpTyUnc, distUnc, ageUnc, AvUnc, bc, bcUnc, UVExcessUnc, numMC, Rin=Rin, variability=variability, age_scatter=age_scatter)
+            acc.UVExcessErrorProp(SpTyUnc, distUnc, ageUnc, AvUnc, bc, bcUnc, UVExcessUnc, numMC, Rin=Rin, RinUnc=RinUnc, variability=variability, age_scatter=age_scatter)
     
-    def linefluxErrorProp(self, SpTyUnc, distUnc, ageUnc, AvUnc, linefluxUnc, numMC, Rin=5, line=None, A=None, AUnc=None, B=None, BUnc=None, age_scatter=False):
+    def linefluxErrorProp(self, SpTyUnc, distUnc, ageUnc, AvUnc, linefluxUnc, numMC, Rin=5, RinUnc=0, line=None, A=None, AUnc=None, B=None, BUnc=None, variability=0, age_scatter=False):
         for acc in self.accretion_distribution:
-            acc.linefluxErrorProp(SpTyUnc, distUnc, ageUnc, AvUnc, linefluxUnc, numMC, Rin=Rin, line=line, A=A, AUnc=AUnc, B=B, BUnc=BUnc, age_scatter=agescatter)
+            acc.linefluxErrorProp(SpTyUnc, distUnc, ageUnc, AvUnc, linefluxUnc, numMC, Rin=Rin, RinUnc=RinUnc, line=line, A=A, AUnc=AUnc, B=B, BUnc=BUnc, variability=variability,  age_scatter=age_scatter)
             
     def create_df(self):
         idealmdots = [acc.ideal_mdot for acc in self.accretion_distribution]
@@ -394,11 +449,13 @@ class AccretionDistribution:
         Laccs = [acc.Lacc for acc in self.accretion_distribution]
         
         temp = {'Mass (M$_\odot$)':masses, 'Radius (R$_\odot$)':radii, 'Age (Myr)':ages, 'Distance (pc)':distances, 
-                'Teff (K)':temperatures, ''''Spectral Type':SpTys,''' 'Rin (R$_\odot$)':Rins, 'Mdot (M$_\odot$)':mdots, 
+                'Teff (K)':temperatures, '''''Spectral Type':SpTys,''' 'Rin (R$_\odot$)':Rins, 'Mdot (M$_\odot$)':mdots, 
                 'Lacc (L$_\odot$)':Laccs, '"true" Mdot (M$_\odot$)':idealmdots, '"true" Lacc (L$_\odot$)':idealLaccs}
         df = pd.DataFrame(temp)
         
         return df
+        
+ 
         
         
 ########################
