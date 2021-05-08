@@ -75,7 +75,7 @@ class Accretion:
         logMdot = np.log10(self.mdot)
         fig, ax = plt.subplots()
         ax.plot(logmass, logaccepted_relation, color='cornflowerblue', label='Empirical Relationship')
-        ax.scatter(logmass, logMdot, color='darkseagreen', label='Simulated Points')
+        ax.scatter(logmass, logMdot, color='lightsteelblue', label='Simulated Points')
         ax.set_xlabel('log(Mass) (M$\odot$)')
         ax.set_ylabel('log(Mass Accretion Rate) (M$\odot$/yr)')
         ax.set_title('Monte Carlo Error Propagation')
@@ -151,8 +151,8 @@ class Accretion:
                 self.RinUncDist = a.uncdist(x, Rin, RinUnc, numMC)
 
             self.TeffUncDist = a.SpTy_to_Teff(self.SpTyUncDist)
-            self.massUncDist = a.Teff_to_params(self.TeffUncDist, (self.ageUncDist))[0]
-            self.radiusUncDist = a.Teff_to_params(self.TeffUncDist, (self.ageUncDist))[1]
+            self.massUncDist = a.Teff_to_params(self.TeffUncDist, (np.median(self.ageUncDist)))[0]
+            self.radiusUncDist = a.Teff_to_params(self.TeffUncDist, (np.median(self.ageUncDist)))[1]
             self.RinUncDist = self.RinUncDist*self.radiusUncDist
             #self.RinUncDist = Rin*self.radiusUncDist
             
@@ -232,11 +232,11 @@ class Accretion:
             x = np.linspace(0, 1000, 100000)
                     
             #add in uncertainties to variables specific to observable
-            #self.AUncDist = a.uncdist(x, A, aUnc, numMC) #A
-            #self.BUncDist = a.uncdist(x, B, bUnc, numMC) #B
+            self.AUncDist = a.uncdist(x, A, aUnc, numMC) #A
+            self.BUncDist = a.uncdist(x, B, bUnc, numMC) #B
             #Ignore uncertainties of the empirical fit
-            self.AUncDist = A #A
-            self.BUncDist = B #B
+            #self.AUncDist = A #A
+            #self.BUncDist = B #B
             
             #build uncertainty distributions
             if SpTyUnc == 0:
@@ -289,6 +289,15 @@ class Accretion:
             #Generate synthetic Lacc distribution
             self.mdot = a.lineflux_to_Mdot(self.linefluxUncDist, self.distUncDist, self.massUncDist, self.radiusUncDist, self.AvUncDist, Rin=self.RinUncDist, A=self.AUncDist, B=self.BUncDist)
             if variability != 0:
+                log_mdot = np.log10(self.mdot)
+                if numMC == 1: 
+                    draw = np.random.normal(log_mdot, variability, size=numMC)[0]
+                else:
+                    draw = np.random.normal(log_mdot, variability, size=numMC)
+                
+                self.mdot = 10**draw
+                
+                '''
                 #specify lower and upper bounds for the truncated gaussian
                 lower, upper = 0,1
                 mu, sigma = (self.mdot), (self.mdot*variability)
@@ -298,10 +307,10 @@ class Accretion:
                     self.mdot = variability_distribution.rvs(numMC)[0]
                 else:
                     self.mdot = variability_distribution.rvs(numMC)
+                '''
             
             self.Lacc =  a.Mdot_to_Lacc(self.mdot, self.massUncDist, self.radiusUncDist, self.RinUncDist)
-
-
+            
 
 
 
@@ -384,9 +393,9 @@ class AccretionDistribution:
             print('IMF not found.')
      
     #From prior. PDF fit using scikit-learn -> inverse transform sampling
-    def mass_from_prior(self, size, mass_prior, k='gaussian'):
+    def mass_from_prior(self, size, mass_prior, k='exponential'):
         #masses
-        x_mass = np.linspace(0,5,len(mass_prior))
+        x_mass = np.linspace(0,2.4, 10000)#len(mass_prior))
         self.masses = a.inverse_transform_sampling(x_mass, a.pdf_fit(x_mass, mass_prior, k), size)
         
     ##### Age Input Strategies #####
@@ -394,7 +403,7 @@ class AccretionDistribution:
     #From prior. PDF fit using scikit-learn -> inverse transform sampling
     def age_from_prior(self, size, age_prior, k='gaussian'):
         #masses
-        x_age = np.linspace(0,5,len(age_prior))
+        x_age = np.linspace(0,10,len(age_prior))
         self.ages = a.inverse_transform_sampling(x_age, a.pdf_fit(x_age, age_prior, k), size)
         
     #Gaussian Distribution centered around a value and with a certain standard deviation estimate.
@@ -406,7 +415,7 @@ class AccretionDistribution:
     #From prior. PDF fit using scikit-learn -> inverse transform sampling
     def distance_from_prior(self, size, distance_prior, k='exponential'):
         #masses
-        x_distance = np.linspace(0,5,len(distance_prior))
+        x_distance = np.linspace(0,1000,len(distance_prior))
         self.distances = a.inverse_transform_sampling(x_distance, a.pdf_fit(x_distance, distance_prior, k), size)
         
     #Gaussian Distribution centered around a value and with a certain standard deviation estimate.
@@ -418,7 +427,7 @@ class AccretionDistribution:
     #From prior. PDF fit using scikit-learn -> inverse transform sampling
     def Av_from_prior(self, size, Av_prior, k='exponential'):
         #masses
-        x_Av = np.linspace(0,5,len(Av_prior))
+        x_Av = np.linspace(0,10,len(Av_prior))
         self.Avs = a.inverse_transform_sampling(x_Av, a.pdf_fit(x_Av, Av_prior, k), size)
         self.Avs[self.Avs<0] = 0.00
         
@@ -429,11 +438,55 @@ class AccretionDistribution:
     def UVExcessErrorProp(self, SpTyUnc, distUnc, ageUnc, AvUnc, bc, bcUnc, UVExcessUnc, numMC, Rin=5, RinUnc=0,  variability=0, age_scatter=False):
         for acc in self.accretion_distribution:
             acc.UVExcessErrorProp(SpTyUnc, distUnc, ageUnc, AvUnc, bc, bcUnc, UVExcessUnc, numMC, Rin=Rin, RinUnc=RinUnc, variability=variability, age_scatter=age_scatter)
-    
+        #UV Excess Error Table
+        errordict = {
+            'Variable': ['Spectral Type', 'Distance', 'Age', 'Extinction', 'Bolometric Correction',
+                         'UV Excess Flux', r'$R_{in}$', 'Variability', 'Age Scatter'],
+            'Uncertainty': [SpTyUnc, distUnc, ageUnc, AvUnc, (str(bc)+r' $ \pm $ '+str(bcUnc)), UVExcessUnc*100, 
+                            (str(5)+r' $ \pm $'+str(RinUnc)), variability, age_scatter],
+            'Units': ['subclasses', 'pc', 'Myr', 'mag', 'flux scale factor', '% error', r'$R_{\star}$', 'dex', ' '],
+            'Dependent Variables': [r'M$_{\star}$, R$_{\star}$, R$_{in}$', 'L$_{acc}$', r'M$_{\star}$, R$_{\star}$, R$_{in}$', 'L$_{acc}$', 
+                                     'L$_{acc}$', 'L$_{acc}$', r'R$_{in}$', 'N/A', 'N/A']
+        }
+        self.errorinfo = pd.DataFrame(errordict)
+        self.title = "UV Excess Error Propagation"
+        
     def linefluxErrorProp(self, SpTyUnc, distUnc, ageUnc, AvUnc, linefluxUnc, numMC, Rin=5, RinUnc=0, line=None, A=None, AUnc=None, B=None, BUnc=None, variability=0, age_scatter=False):
         for acc in self.accretion_distribution:
             acc.linefluxErrorProp(SpTyUnc, distUnc, ageUnc, AvUnc, linefluxUnc, numMC, Rin=Rin, RinUnc=RinUnc, line=line, A=A, AUnc=AUnc, B=B, BUnc=BUnc, variability=variability,  age_scatter=age_scatter)
+        #Line Flux Error Table
+        errordict = {
+            'Variable': ['Spectral Type', 'Distance', 'Age', 'Extinction',
+                         'Line Flux', r'$R_{in}$', 'Variability', 'Age Scatter'],
+            'Uncertainty': [SpTyUnc, distUnc, ageUnc, AvUnc, linefluxUnc*100, 
+                            (str(5)+r' $ \pm $'+str(RinUnc)), variability, age_scatter],
+            'Units': ['subclasses', 'pc', 'Myr', 'mag', '% error', r'$R_{\star}$', 'dex', ' ']
+        }
+        self.errorinfo = pd.DataFrame(errordict)
+        self.title = "Line Flux Error Propagation"
             
+    def unctable(self):
+        font = {'family' : 'Georgia',
+            'weight' : 'normal',
+            'size'   : 13.7}
+
+        plt.rc('font', **font)
+
+        fig = plt.figure(figsize = (8, 2.3))
+        ax = fig.add_subplot()
+
+        ax.table(cellText = self.errorinfo.values,
+                  rowLabels = None,
+                  colColours =["lightsteelblue"] * len(self.errorinfo.columns), 
+                  colLabels = self.errorinfo.columns,
+                  loc = "center",
+                  cellLoc = "center"
+                 )
+        ax.set_title(self.title)
+        ax.axis('off')
+    
+        return fig
+    
     def create_df(self):
         idealmdots = [acc.ideal_mdot for acc in self.accretion_distribution]
         idealLaccs = [acc.ideal_Lacc for acc in self.accretion_distribution]
@@ -448,8 +501,9 @@ class AccretionDistribution:
         mdots = [acc.mdot for acc in self.accretion_distribution]
         Laccs = [acc.Lacc for acc in self.accretion_distribution]
         
+        #took out spec type
         temp = {'Mass (M$_\odot$)':masses, 'Radius (R$_\odot$)':radii, 'Age (Myr)':ages, 'Distance (pc)':distances, 
-                'Teff (K)':temperatures, '''''Spectral Type':SpTys,''' 'Rin (R$_\odot$)':Rins, 'Mdot (M$_\odot$)':mdots, 
+                'Teff (K)':temperatures, 'Rin (R$_\odot$)':Rins, 'Mdot (M$_\odot$)':mdots, 
                 'Lacc (L$_\odot$)':Laccs, '"true" Mdot (M$_\odot$)':idealmdots, '"true" Lacc (L$_\odot$)':idealLaccs}
         df = pd.DataFrame(temp)
         
@@ -463,50 +517,93 @@ class AccretionDistribution:
 ######################## Plotting Functions   
         
         
-def MoneyPlot(observed, simulated):
-    logmass = np.log10(simulated['Mass (M$_\\odot$)'])
-    logMdot = np.log10(simulated['Mdot (M$_\\odot$)'])
-    logaccepted_relation = np.log10(simulated['"true" Mdot (M$_\\odot$)'])
+def MoneyPlot(observed, simulated, numMC=1):
+    mass = []
+    for r in range(len(simulated)):
+        for i in range(numMC):
+            mass.append(simulated['Mass (M$_\\odot$)'][r])
+    mass = np.array(mass)
+    
+    mdot = []
+    for r in range(len(simulated)):
+        for i in range(numMC):
+            if numMC == 1:
+                mdot.append(simulated['Mdot (M$_\\odot$)'][r])
+            else:
+                mdot.append(simulated['Mdot (M$_\\odot$)'][r][i])
+    mdot = np.array(mdot)
+    
+    true_mdot = []
+    for r in range(len(simulated)):
+        for i in range(numMC):
+            true_mdot.append(simulated['"true" Mdot (M$_\\odot$)'][r])
+    true_mdot = np.array(true_mdot)
+    
+    logmass = np.log10(mass)
+    logMdot = np.log10(mdot)
+    logaccepted_relation = np.log10(true_mdot)
     observed_mass = np.log10(observed['Object Mass M_Solar'])
     observed_mdot = np.log10(observed['Accretion Rate M_solar yr-1'])
 
     fig = plt.figure(figsize=(16, 12))
     frame1 = fig.add_axes((.1,.3,.8,.6))
-    ax = plt.gca()
-    ax.scatter(logmass, logMdot, color='darkseagreen', s=130, alpha=0.4, label='Simulated')
-    ax.scatter(observed_mass, observed_mdot, color='black', s = 50, marker='x', alpha=0.4, label='Observed')
-    ax.plot(logmass, logaccepted_relation, color='tomato', label='Empirical Relationship')
-    ax.axvline(x=np.log10(0.012), color='black', linestyle='-.', label='Deuterium Burning Limit')
-    ax.axvline(x=np.log10(0.1), color='black', linestyle=':', label='Hydrogen Burning Limit')
-    ax.set_xlim(-2.6, 0.6)
-    ax.set_xlabel('log(Mass) (M$_\odot$)', size=16)
-    ax.set_ylabel('log(Mass Accretion Rate) (M$_\odot$/yr)', size=16)
-    ax.text(-2.3, -6.6, 'Planets', size = 15, fontstyle='italic')
-    ax.text(-1.64, -6.6, 'Brown Dwarfs', size = 15, fontstyle='italic')
-    ax.text(-0.29, -6.6, 'Stars', size = 15, fontstyle='italic')
-    ax.set_title('Monte Carlo Error Propagation', size=20, fontweight='heavy')
-    ax.legend(loc='lower right', prop={'family':'sans-serif', 'style':'normal', 'size': 16}, frameon=False, shadow=True)
+    frame1.scatter(logmass, logMdot, facecolor='lightsteelblue', edgecolor='steelblue', s=130, alpha=0.4, label='Simulated')
+    frame1.scatter(observed_mass, observed_mdot, edgecolor='black', facecolor='black', s = 50, marker='x', alpha=0.4, label='Observed')
+    frame1.plot(logmass, logaccepted_relation, color='tomato', label='Empirical Relationship')
+    frame1.axvline(x=np.log10(0.012), color='black', linestyle='-.', label='Deuterium Burning Limit')
+    frame1.axvline(x=np.log10(0.1), color='black', linestyle=':', label='Hydrogen Burning Limit')
+    frame1.set_xlim(-2.6, 0.6)
+    frame1.set_ylim(-14, -5.75)
+    frame1.set_xlabel('log(Mass) (M$_\odot$)', size=16)
+    frame1.set_ylabel('log(Mass Accretion Rate) (M$_\odot$/yr)', size=16)
+    frame1.text(-2.3, -6.6, 'Planets', size = 15, fontstyle='italic')
+    frame1.text(-1.64, -6.6, 'Brown Dwarfs', size = 15, fontstyle='italic')
+    frame1.text(-0.29, -6.6, 'Stars', size = 15, fontstyle='italic')
+    frame1.set_title('Monte Carlo Error Propagation', size=20, fontweight='heavy')
+    frame1.legend(loc='lower right', prop={'family':'sans-serif', 'style':'normal', 'size': 16}, frameon=False, shadow=True)
+
 
     frame2=fig.add_axes((.1,.1,.8,.2))  
-    ax = plt.gca()
     observed_difference = np.log10(observed['Accretion Rate M_solar yr-1']) - np.log10(a.empiricalMdot(observed['Object Mass M_Solar']))
-    simulated_difference = np.log10(simulated['Mdot (M$_\\odot$)']) - np.log10(a.empiricalMdot(simulated['Mass (M$_\\odot$)']))
-    ax.axhline(0, color='tomato')
-    ax.set_xlabel('log(Mass) (M$_\odot$)', size=16)
-    ax.set_ylabel('Residual (log space)', size=16)
-    ax.scatter(np.log10(observed['Object Mass M_Solar']), observed_difference, color='black', marker='x', alpha=0.4, label = 'Observed Residuals')
-    ax.scatter(np.log10(simulated['Mass (M$_\\odot$)']), simulated_difference, color='darkseagreen', alpha=0.4, label = 'Simulated Residuals')
-    ax.legend(frameon=True)
+    simulated_difference = logMdot - np.log10(a.empiricalMdot(10**logmass))
+    frame2.axhline(0, color='tomato')
+    frame2.set_xlabel('log(Mass) (M$_\odot$)', size=16)
+    frame2.set_ylabel('Residual (log space)', size=16)
+    frame2.set_ylim(-3.3, 3.2)
+    frame2.scatter(logmass, simulated_difference, facecolor='lightsteelblue', edgecolor='steelblue', alpha=0.4, label = 'Simulated Residuals')
+    frame2.scatter(np.log10(observed['Object Mass M_Solar']), observed_difference, facecolor='black', edgecolor='black', marker='x', alpha=0.4, label = 'Observed Residuals')
+    frame2.legend(frameon=True)
     
     return fig
     
     
     
-def MarginalDistribution(observed, simulated):
+def MarginalDistribution(observed, simulated, numMC=1):
     #load in data
-    logmass = np.log10(simulated['Mass (M$_\\odot$)'])
-    logMdot = np.log10(simulated['Mdot (M$_\\odot$)'])
-    logaccepted_relation = np.log10(simulated['"true" Mdot (M$_\\odot$)'])
+    mass = []
+    for r in range(len(simulated)):
+        for i in range(numMC):
+            mass.append(simulated['Mass (M$_\\odot$)'][r])
+    mass = np.array(mass)
+    
+    mdot = []
+    for r in range(len(simulated)):
+        for i in range(numMC):
+            if numMC == 1:
+                mdot.append(simulated['Mdot (M$_\\odot$)'][r])
+            else:
+                mdot.append(simulated['Mdot (M$_\\odot$)'][r][i])
+    mdot = np.array(mdot)
+    
+    true_mdot = []
+    for r in range(len(simulated)):
+        for i in range(numMC):
+            true_mdot.append(simulated['"true" Mdot (M$_\\odot$)'][r])
+    true_mdot = np.array(true_mdot)
+    
+    logmass = np.log10(mass)
+    logMdot = np.log10(mdot)
+    logaccepted_relation = np.log10(true_mdot)
     observed_mass = np.log10(observed['Object Mass M_Solar'])
     observed_mdot = np.log10(observed['Accretion Rate M_solar yr-1'])
 
@@ -533,7 +630,7 @@ def MarginalDistribution(observed, simulated):
 
     #Marginal Distributions
     # no labels
-    ax_histx.tick_params(axis="x", labelbottom=False)
+    ax_histx.tick_params(axis="x", labelbottom=False, labelleft=False)
     ax_histy.tick_params(axis="y", labelleft=False)
 
     # determine nice limits by hand:
@@ -543,17 +640,17 @@ def MarginalDistribution(observed, simulated):
     bins = np.arange(-lim, lim + binwidth, binwidth)
 
     #Plot histograms
-    ax_histx.hist(observed_mass, bins=bins, color='black', density=True, alpha=0.225, label='Observed')
-    ax_histy.hist(observed_mdot, bins=bins, orientation='horizontal', color='black', density=True, alpha=0.225, label='Observed')
-    ax_histx.hist(logmass, bins=bins, color='darkseagreen', density=True, alpha=0.3, label='Simulated')
-    ax_histy.hist(logMdot, bins=bins, orientation='horizontal', color='darkseagreen', density=True, alpha=0.3, label='Simulated')
-    ax_histx.legend()
-    ax_histy.legend()
+    ax_histx.hist(observed_mass, bins=bins, edgecolor='black', facecolor='gray', density=True,  histtype='stepfilled', alpha=0.4, label='Observed')
+    ax_histy.hist(observed_mdot, bins=bins, orientation='horizontal', edgecolor='black', facecolor='gray', density=True,  histtype='stepfilled', alpha=0.4, label='Observed')
+    ax_histx.hist(logmass, bins=bins, facecolor='lightsteelblue', edgecolor='royalblue', density=True, histtype='stepfilled', alpha=0.4, label='Simulated')
+    ax_histy.hist(logMdot, bins=bins, orientation='horizontal', facecolor='lightsteelblue', edgecolor='royalblue', density=True, histtype='stepfilled', alpha=0.4, label='Simulated')
+    #ax_histx.legend()
+    #ax_histy.legend()
 
     #Mass vs Mdot
-    frame1.scatter(logmass, logMdot, color='darkseagreen', s=130, alpha=0.4, label='Simulated')
-    frame1.scatter(observed_mass, observed_mdot, color='black', s = 50, marker='x', alpha=0.4, label='Observed')
-    frame1.plot(logmass, logaccepted_relation, color='tomato', label='Empirical Relationship')
+    frame1.scatter(logmass, logMdot, facecolor='lightsteelblue', edgecolor='steelblue', s=130, alpha=0.4, label='Simulated')
+    frame1.scatter(observed_mass, observed_mdot, edgecolor='black', facecolor='black', s = 50, marker='x', alpha=0.4, label='Observed')
+    frame1.plot(logmass, logaccepted_relation, color='tomato', label='Truth Relationship')
     frame1.axvline(x=np.log10(0.012), color='black', linestyle='-.', label='Deuterium Burning Limit')
     frame1.axvline(x=np.log10(0.1), color='black', linestyle=':', label='Hydrogen Burning Limit')
     frame1.set_xlim(-2.6, 0.6)
@@ -563,6 +660,7 @@ def MarginalDistribution(observed, simulated):
     frame1.text(-2.3, -6.6, 'Planets', size = 15, fontstyle='italic')
     frame1.text(-1.64, -6.6, 'Brown Dwarfs', size = 15, fontstyle='italic')
     frame1.text(-0.29, -6.6, 'Stars', size = 15, fontstyle='italic')
+    frame1.tick_params(labelsize=13.5)
     ax_histx.set_title('Monte Carlo Error Propagation', size=20, fontweight='heavy')
     frame1.legend(loc='lower right', prop={'family':'sans-serif', 'style':'normal', 'size': 16}, frameon=False, shadow=True)
 
@@ -577,7 +675,7 @@ def MarginalDistribution(observed, simulated):
 
     #Calculate Residuals
     observed_difference = np.log10(observed['Accretion Rate M_solar yr-1']) - np.log10(a.empiricalMdot(observed['Object Mass M_Solar']))
-    simulated_difference = np.log10(simulated['Mdot (M$_\\odot$)']) - np.log10(a.empiricalMdot(simulated['Mass (M$_\\odot$)']))
+    simulated_difference = logMdot - np.log10(a.empiricalMdot(10**logmass))
 
     #Residual Marginal Distribution
     #remove ticks
@@ -591,30 +689,52 @@ def MarginalDistribution(observed, simulated):
     
     
     #plot
-    ax2_hist.hist(observed_difference, bins=residualbins, orientation='horizontal', color='black', density=True, alpha=0.225, label='Observed')
-    ax2_hist.hist(simulated_difference, bins=residualbins, orientation='horizontal', color='darkseagreen', density=True, alpha=0.3, label='Simulated')
+    ax2_hist.hist(observed_difference, bins=residualbins, orientation='horizontal', facecolor='gray', edgecolor='black', density=True, histtype='stepfilled', alpha=0.4, label='Observed')
+    ax2_hist.hist(simulated_difference, bins=residualbins, orientation='horizontal', facecolor='lightsteelblue', edgecolor='royalblue', histtype='stepfilled', density=True, alpha=0.4, label='Simulated')
     ax2_hist.set_ylim(-3.3, 3.2)
     ax2_hist.axhline(0, color='tomato')
-    ax2_hist.legend()
+    #ax2_hist.legend()
 
     #Residual Plot
     frame2.axhline(0, color='tomato')
     frame2.set_xlabel('log(Mass) (M$_\odot$)', size=16)
     frame2.set_ylabel('Residual (log space)', size=16)
     frame2.set_ylim(-3.3, 3.2)
-    frame2.scatter(np.log10(observed['Object Mass M_Solar']), observed_difference, color='black', marker='x', alpha=0.4, label = 'Observed Residuals')
-    frame2.scatter(np.log10(simulated['Mass (M$_\\odot$)']), simulated_difference, color='darkseagreen', alpha=0.4, label = 'Simulated Residuals')
-    frame2.legend(frameon=True)
+    frame2.scatter(logmass, simulated_difference, facecolor='lightsteelblue', edgecolor='steelblue', alpha=0.4, label = 'Simulated Residuals')
+    frame2.scatter(np.log10(observed['Object Mass M_Solar']), observed_difference, facecolor='black', edgecolor='black', marker='x', alpha=0.4, label = 'Observed Residuals')
+    frame2.tick_params(labelsize=13.5)
+    #frame2.legend(frameon=True)
     
     return fig
     
     
     
-def residuals(observed, simulated):
+def residuals(observed, simulated, numMC=1):
     #load in data
-    logmass = np.log10(simulated['Mass (M$_\\odot$)'])
-    logMdot = np.log10(simulated['Mdot (M$_\\odot$)'])
-    logaccepted_relation = np.log10(simulated['"true" Mdot (M$_\\odot$)'])
+    mass = []
+    for r in range(len(simulated)):
+        for i in range(numMC):
+            mass.append(simulated['Mass (M$_\\odot$)'][r])
+    mass = np.array(mass)
+    
+    mdot = []
+    for r in range(len(simulated)):
+        for i in range(numMC):
+            if numMC == 1:
+                mdot.append(simulated['Mdot (M$_\\odot$)'][r])
+            else:
+                mdot.append(simulated['Mdot (M$_\\odot$)'][r][i])
+    mdot = np.array(mdot)
+    
+    true_mdot = []
+    for r in range(len(simulated)):
+        for i in range(numMC):
+            true_mdot.append(simulated['"true" Mdot (M$_\\odot$)'][r])
+    true_mdot = np.array(true_mdot)
+    
+    logmass = np.log10(mass)
+    logMdot = np.log10(mdot)
+    logaccepted_relation = np.log10(true_mdot)
     observed_mass = np.log10(observed['Object Mass M_Solar'])
     observed_mdot = np.log10(observed['Accretion Rate M_solar yr-1'])
 
@@ -637,7 +757,7 @@ def residuals(observed, simulated):
 
     #Calculate Residuals
     observed_difference = np.log10(observed['Accretion Rate M_solar yr-1']) - np.log10(a.empiricalMdot(observed['Object Mass M_Solar']))
-    simulated_difference = np.log10(simulated['Mdot (M$_\\odot$)']) - np.log10(a.empiricalMdot(simulated['Mass (M$_\\odot$)']))
+    simulated_difference = logMdot - np.log10(a.empiricalMdot(10**logmass))
 
     #Residual Marginal Distribution
     #remove ticks
@@ -650,24 +770,25 @@ def residuals(observed, simulated):
     residualbins = np.arange(-residuallim, residuallim + residualbinwidth, residualbinwidth)
     
     #plot
-    ax2_hist.hist(observed_difference, bins=residualbins, orientation='horizontal', color='black', density=True, alpha=0.225, label='Observed')
-    ax2_hist.hist(simulated_difference, bins=residualbins, orientation='horizontal', color='darkseagreen', density=True, alpha=0.3, label='Simulated')
+    ax2_hist.hist(observed_difference, bins=residualbins, orientation='horizontal', histtype='stepfilled', facecolor='gray', edgecolor='black', density=True, alpha=0.4, label='Observed')
+    ax2_hist.hist(simulated_difference, bins=residualbins, orientation='horizontal', histtype='stepfilled', facecolor='lightsteelblue', edgecolor='royalblue', density=True, alpha=0.3, label='Simulated')
     ax2_hist.set_ylim(-3.3, 3.2)
     ax2_hist.axhline(0, color='tomato', label='Empirical Relationship')
-    ax2_hist.legend()
+    ax2_hist.tick_params(labelsize=13.5)
 
     #Residual Plot
     frame2.axhline(0, color='tomato', label='Empirical Relationship')
     frame2.set_xlabel('log(Mass) (M$_\odot$)', size=16)
     frame2.set_ylabel('Residual (log space)', size=16)
     frame2.set_ylim(-3.3, 3.2)
+    frame2.scatter(logmass, simulated_difference, facecolor='lightsteelblue', edgecolor='steelblue', alpha=0.4, label = 'Simulated Residuals')
     frame2.scatter(np.log10(observed['Object Mass M_Solar']), observed_difference, color='black', marker='x', alpha=0.4, label = 'Observed Residuals')
-    frame2.scatter(np.log10(simulated['Mass (M$_\\odot$)']), simulated_difference, color='darkseagreen', alpha=0.4, label = 'Simulated Residuals')
-    frame2.legend(frameon=True)
+    frame2.tick_params(labelsize=13.5)
+    frame2.legend(frameon=True, fontsize=15)
     
     return fig
     
-    
+
     
 # Getting log'd bins
 def getLogBins(data, num_bins):

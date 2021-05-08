@@ -4,11 +4,6 @@
         Joe Palmo
 
 '''
-
-
-
-
-
 ################### IMPORT STATEMENTS #########################
 
 import numpy as np
@@ -41,15 +36,13 @@ def flux_to_luminosity(flux, distance):
     lum = flux * (4*np.pi*(distance*const.pc.to('cm').value)**2)
     return lum
     
-
 def luminosity_to_flux(lum, dist):
     '''
     This function will turn a flux estimate (erg/s/cm^2) into a luminosity using distance
     '''
     flux = lum / (4*np.pi*(dist*const.pc.to('cm').value)**2)
     return flux
-    
-    
+     
 def Lacc_to_Mdot(Lacc, mass, radius, Rin=5):
     '''
     This function will turn an accretion luminosity into a mass accretion rate estimate using the widely
@@ -66,10 +59,7 @@ def Lacc_to_Mdot(Lacc, mass, radius, Rin=5):
     Mdot (float) : mass accretion rate [Msun/yr]
     '''
     Mdot = (1-(radius/Rin))**-1*(radius*const.R_sun.value*Lacc*const.L_sun.value)/(const.G.value*mass*const.M_sun.value) * (365*24*3600) / (const.M_sun.value)
-
-
     return Mdot
-    
     
 def Mdot_to_Lacc(Mdot, mass, radius, Rin=5):
     '''
@@ -88,10 +78,7 @@ def Mdot_to_Lacc(Mdot, mass, radius, Rin=5):
     Lacc (float) : Accretion luminosity [Lsun]
     '''
     Lacc = Mdot*(1-(radius/Rin))*(const.G.value*mass*const.M_sun.value)*(const.M_sun.value)/(radius*const.R_sun.value)/(365*24*3600)/const.L_sun.value
-
-
     return Lacc
-    
     
 def UVExcess_to_Mdot(UVexcess, bc, dist, mass, radius, Av, Rin=5):
     '''
@@ -112,7 +99,17 @@ def UVExcess_to_Mdot(UVexcess, bc, dist, mass, radius, Av, Rin=5):
     Mdot - mass accretion rate [Msun/yr]
     '''
     #Extinction correction of flux
-    deredUV = ex.remove(Av, UVexcess)
+    #reddening law to U-band
+    Au = Av
+    if type(Av) == float:
+        Au = ex.ccm89(np.array([3650.0]), Av, 3.1)[0]
+    elif type(Av) == list or type(Av) == np.ndarray:
+        Au = []
+        for av in Av:
+            Au.append(ex.ccm89(np.array([3650.0]), av, 3.1)[0])
+    Au = np.array(Au)
+    #extinction correction
+    deredUV = ex.remove(Au, UVexcess)
     
     #use the bolometric correction factor to scale the UV excess flux to total accretion flux
     total_excess = deredUV*bc
@@ -125,9 +122,7 @@ def UVExcess_to_Mdot(UVexcess, bc, dist, mass, radius, Av, Rin=5):
     
     #accretion luminosity to Mdot
     Mdot = Lacc_to_Mdot(Lacc, mass, radius, Rin)
-    
     return Mdot
-    
     
 def Mdot_to_UVExcess(Mdot, bc, dist, mass, radius, Av, Rin=5):
     '''
@@ -160,10 +155,18 @@ def Mdot_to_UVExcess(Mdot, bc, dist, mass, radius, Av, Rin=5):
     UVexcess = total_excess / bc
     
     #Extinction correction of flux
-    redUV = ex.apply(Av, UVexcess)
-    
-    return redUV
-    
+    #reddening law to U-band
+    Au = Av
+    if type(Av) == float:
+        Au = ex.ccm89(np.array([3650.0]), Av, 3.1)[0]
+    elif type(Av) == list or type(Av) == np.ndarray:
+        Au = []
+        for av in Av:
+            Au.append(ex.ccm89(np.array([3650.0]), av, 3.1)[0])
+    Au = np.array(Au)
+    #extinction correction
+    redUV = ex.apply(Au, UVexcess)
+    return redUV 
 
 def UbandExcess_to_Mdot(Uexcess, dist, mass, radius, Av, Rin=5, unc=False):
     '''
@@ -183,7 +186,16 @@ def UbandExcess_to_Mdot(Uexcess, dist, mass, radius, Av, Rin=5, unc=False):
     Mdot - mass accretion rate [Msun/yr]
     '''
     #Extinction correction of flux
-    deredU = ex.remove(Av, Uexcess) 
+    #reddening law to U-band
+    if type(Av) == float:
+        Au = ex.ccm89(np.array([3650.0]), Av, 3.1)[0]
+    elif type(Av) == list or type(Av) == np.ndarray:
+        Au = []
+        for av in Av:
+            Au.append(ex.ccm89(np.array([3650.0]), av, 3.1)[0])
+    Au = np.array(Au)
+    #extinction correction
+    deredU = ex.remove(Au, Uexcess) 
     
     #U-band flux to Lu
     Lu = flux_to_luminosity(deredU, dist)
@@ -201,11 +213,60 @@ def UbandExcess_to_Mdot(Uexcess, dist, mass, radius, Av, Rin=5, unc=False):
     
     #accretion luminosity to Mdot
     Mdot = Lacc_to_Mdot(Lacc, mass, radius, Rin)
-    
     return Mdot
     
-
-
+def Mdot_to_UbandExcess(Mdot, dist, mass, radius, Av, Rin=5, unc=False):
+    '''
+    This function will transform a mass accretion rate estimate into a U band flux value by following 
+    the process described in Robinson 2019. 
+    
+    Inputs:
+    Mdot - mass accretion rate [Msun/yr]
+    dist - distance to object [pc]
+    mass - mass of object [Msun]
+    radius - radius of object [Rsun]
+    
+    Optional:
+    Rin - magnetospheric radius (default 5 [Rsun])
+    
+    Outputs:
+    Uexcess - U band continuum excess flux [erg/(s*cm^2)]
+    '''
+    #Mdot to accretion luminosity
+    Lacc = Mdot_to_Lacc(Mdot, mass, radius, Rin)
+    
+    #ln Lacc
+    logLacc = np.log(Lacc)
+    
+    #Lacc to Lu using Robinson paper -- natural logarithms
+    #uncertainties 0.03 for each constant
+    if unc == False:
+        logLu = (logLacc - 0.5)/0.93
+    else:
+        logLu = (logLacc - (0.5+np.random.normal(0.03)))/(0.93+np.random.normal(0.03))
+    Lu = np.exp(logLu)
+    
+    #convert Lu to erg/s
+    Lu = Lu * const.L_sun.to('erg/s').value
+    
+    #Lu to U-band flux
+    Uexcess = luminosity_to_flux(Lu, dist)
+    
+    #extinction correction of flux
+    #reddening law to U-band
+    if type(Av) == float:
+        Au = ex.ccm89(np.array([3650.0]), Av, 3.1)[0]
+    elif type(Av) == list or type(Av) == np.ndarray:
+        Au = []
+        for av in Av:
+            Au.append(ex.ccm89(np.array([3650.0]), av, 3.1)[0])
+    Au = np.array(Au)
+    #extinction correction
+    redU = ex.apply(Au, Uexcess) 
+    
+    return redU
+    
+    
 def lineflux_to_Mdot(flux, dist, mass, radius, Av, Rin=5, line=None, A=None, B=None):
     '''
     This function will turn a line flux into a mass accretion rate estimate using the Lacc-Lline fits derived
@@ -260,10 +321,8 @@ def lineflux_to_Mdot(flux, dist, mass, radius, Av, Rin=5, line=None, A=None, B=N
     Lacc = unlog(logLacc)
     
     Mdot = Lacc_to_Mdot(Lacc, mass, radius, Rin=Rin)
-    
-    return Mdot
-    
-    
+
+    return Mdot    
     
 def Mdot_to_lineflux(Mdot, dist, mass, radius, Av, Rin=5, line=None, A=None, B=None):
     '''
@@ -325,7 +384,6 @@ def Mdot_to_lineflux(Mdot, dist, mass, radius, Av, Rin=5, line=None, A=None, B=N
     
     return redflux
     
-
 def empiricalMdot(mass, scalefactor=1.79941029, intercept=7.99351629):
     '''
     This function will empirically estimate a mass accretion rate value using the 
@@ -347,11 +405,9 @@ def empiricalMdot(mass, scalefactor=1.79941029, intercept=7.99351629):
     
     return (Mdot)
 
-
 #Load in age to intercept function
 with open('ageinterceptfunc.pickle', 'rb') as f:
     age_to_intercept_func = pickle.load(f)
-    
 
 def getIntercept(age):
     '''
@@ -390,15 +446,11 @@ def age_intercept_exponential(age, popt=np.array([ 1.48749094,  0.50602283, -8.6
     
     return a_random * np.exp(-b_random * age) + c_random
 
-
-
 ################### Object Parameter Estimation #########################
-
 
 #Need to have these models handy to derive stellar parameters
 models = glob.glob('StellarParams/Baraffe*txt')
 mesamodels = glob.glob('StellarParams/MESA_*.txt')
-
 
 def Num_to_SpTy(spectypenum):
     '''
@@ -438,10 +490,9 @@ def to_SpTyNum(spectype):
     letter = spectype[0]
     number = spectype[1:]
     
-    sptynum = spty_dict[letter]*10 + int(number)
+    sptynum = spty_dict[letter]*10 + float(number)
     
     return sptynum
-    
     
 def SpTy_to_Teff(spectype):
     '''
@@ -451,12 +502,11 @@ def SpTy_to_Teff(spectype):
     SpTyNum, Teff, SpTy = np.genfromtxt('StellarParams/HerczegHillenbrand_SpTyTeff_Numericized.txt', skip_header=1, dtype='str').T
     SpTyNum, Teff = [float(x) for x in SpTyNum], [float(y) for y in Teff]
     
-    spl = sinterp.UnivariateSpline(SpTyNum, Teff)
+    spl = sinterp.interp1d(SpTyNum, Teff, fill_value='extrapolate')
     
     teff = spl(spectype)
     
     return teff
-    
     
 def Teff_to_params(Teff, age):
     '''
@@ -500,8 +550,7 @@ def Teff_to_params(Teff, age):
     m = f_mass(Teff)
     r = f_radius(Teff)
     
-    return m, r
-    
+    return m, r  
     
 def mass_to_Teff(massobj, age):
     '''
@@ -531,7 +580,6 @@ def mass_to_Teff(massobj, age):
     
     return t
     
-    
 def Teff_to_SpTy(teff):
     '''
     This function will take an effective temperature, and using interpolation from the tables in
@@ -542,12 +590,11 @@ def Teff_to_SpTy(teff):
     SpTyNum.reverse()
     Teff.reverse()
     
-    spl = sinterp.UnivariateSpline(Teff, SpTyNum)
+    spl = sinterp.interp1d(Teff, SpTyNum, fill_value='extrapolate')
     
     spty = spl(teff)
     
     return spty
-    
 
 '''
 ########### 2D Interpolation for Object Parameters ############
@@ -598,9 +645,7 @@ with open('TtoRfunc.pickle', 'rb') as f:
     TtoRfunc = pickle.load(f)
 '''    
     
-
 ################### Uncertainty Distributions #########################
-
 
 def gaussian(x, mu, sigma):
     '''
@@ -630,7 +675,6 @@ def cdf(g, dx):
     dx (float) - the step size of the numerical integration
     '''
     return cdf
-    
 
 def inverse_transform_sampling(x, f, nsamples):
     '''
@@ -681,7 +725,6 @@ def uncdist(x, mu, sigma, nsamples):
     else:
         return samples
 
-
 def pdf_fit(x, data, kernel='gaussian'):
     '''
     This function fits a probability density function to input data (data) using a non-parametric
@@ -707,11 +750,7 @@ def pdf_fit(x, data, kernel='gaussian'):
     pdf = np.exp(pdf)
     
     return pdf
-
-
-    
-    
-    
+        
 ################### IMFs #########################
 
 def MillerScalo1979(m, size):
@@ -757,7 +796,3 @@ def Romano2005(m, size):
     m[m>1] = fb * m[m>1]**(-c)
     inv = inverse_transform_sampling(x, m, size)
     return inv
-    
-    
-    
-    
