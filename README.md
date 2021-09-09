@@ -63,6 +63,8 @@ Your environment should be set up and ready to run! Just remember to activate it
 6. `Palmo_Thesis_Final.pdf`
 - PDF document of my written up thesis
 
+7. `notebooks` folder
+- a bunch of (messy) notebooks that I used during my thesis
 
 ## Tutorial
 
