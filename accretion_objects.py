@@ -3,7 +3,7 @@
     AUTHOR:
         Joe Palmo
 
-    Last Edited 3/4/2021
+
 '''
 
 ################### IMPORT STATEMENTS #########################
@@ -18,15 +18,9 @@ import matplotlib.pyplot as plt
 import scipy.stats as st
 import seaborn as sb
 from astropy import constants as const
-import random
 import astropy.constants as const
-import math
-from tqdm import tqdm
 import extinction as ex
-import pdb
-import glob
 import scipy.optimize as optimization
-from matplotlib.animation import FuncAnimation
 import scipy.interpolate as sinterp
 from sklearn.neighbors import KernelDensity
 import pickle
@@ -40,7 +34,25 @@ import pickle
 
 class Accretion:
     '''
-    Create an object for storing all of the information in an accretion MC error propagation simulation
+    Create an object for storing all of the information in an accretion MC error propagation simulation. 
+    An Accretion Object can be thought of as a single accreting star, BD, or planet. It is defined by 
+    4 input parameters: mass, distance, age, and extinction (Av). 
+    
+    Inputs:
+    mass (float) - mass of accreting object in solar masses
+    distance (float) - distance from Earth in pc
+    age (float) - age of accreting object in Myr
+    Av (float) - extinction of accreting object in mag
+    
+    From these four parameters, other parameters can be derived: effective temperature (Teff),
+    radius, spectral type (SpTy), and magnetospheric radius (Rin).
+    
+    With all of this information, "true" values of mass accretion rate and accretion luminosity
+    are calculated using the empirical relationship.
+    
+    The error propagation can be achieved with the following functions:
+    UVExcessErrorProp()
+    linefluxErrorProp()
     '''
     
     # class attributes here -- any variable which has the same value for all class instances
@@ -67,21 +79,6 @@ class Accretion:
         
         self.mdot = self.ideal_mdot
         #create mdot array for later
-        
-        
-    def MvMdot(self):
-        logaccepted_relation = np.log10(self.ideal_mdot)
-        logmass = np.log10(np.ones(len(self.mdot))*self.mass)
-        logMdot = np.log10(self.mdot)
-        fig, ax = plt.subplots()
-        ax.plot(logmass, logaccepted_relation, color='cornflowerblue', label='Empirical Relationship')
-        ax.scatter(logmass, logMdot, color='lightsteelblue', label='Simulated Points')
-        ax.set_xlabel('log(Mass) (M$\odot$)')
-        ax.set_ylabel('log(Mass Accretion Rate) (M$\odot$/yr)')
-        ax.set_title('Monte Carlo Error Propagation')
-        ax.legend()
-       
-    #def getMdot():
         
         
         
@@ -322,13 +319,33 @@ class Accretion:
 
 class AccretionDistribution:
     '''
-    Build a distribution of accreting objects
+    Build a distribution of accreting (class Accretion) objects. An Accretion object can be thought of as a single accreting star, 
+    BD, or planet. It is defined by 4 input parameters: mass, distance, age, and extinction (Av). By passing 
+    distributions of mass, distance, age, and extinction to the AccretionDistribution object, a synthetic distribution of 
+    accreting stars is initialized.
+    
+    Inputs:
+    mass (float) - mass of accreting object in solar masses
+    distance (float) - distance from Earth in pc
+    age (float) - age of accreting object in Myr
+    Av (float) - extinction of accreting object in mag
+    
+    From these four parameters, other parameters can be derived: effective temperature (Teff),
+    radius, spectral type (SpTy), and magnetospheric radius (Rin).
+    
+    With all of this information, "true" values of mass accretion rate and accretion luminosity
+    are calculated using the empirical relationship.
+    
+    The error propagation can be achieved with the following functions:
+    UVExcessErrorProp()
+    linefluxErrorProp()
+    
     '''
     
     
     def __init__(self, observed, masses=None, distances=None, ages=None, Avs=None):
         
-        # observed is an iteration of Annie's Database
+        # observed is an iteration of CASPAR
         # it is used to compare simulated values to the observed
         # first we clean it using the lines below
         observed['A_V'] = observed['A_V'].fillna(0)
@@ -350,15 +367,6 @@ class AccretionDistribution:
         #save the observed Mdots, Laccs
         self.observed_mdots = observed['Accretion Rate M_solar yr-1'].tolist()
         self.observed_Laccs = (10**observed['Log Accretion Luminosity (solar)']).tolist()
-        
-        #def build_distribution(self):
-         #   if self.masses == None or self.distances == None or self.ages == None or self.Avs == None:
-          #      print('Input Masses, Ages, Distances, and Extinctions for your distribution of accreting objects.')
-           # else:
-            #    #build distribution
-             #   self.accretion_distribution = np.array([Accretion(m, self.distances[i], self.ages[i], self.Avs[i]) for i,m in enumerate(self.masses)])
-        
-        #build_distribution(self)
 
     def build_distribution(self):
         #build distribution

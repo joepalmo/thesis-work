@@ -15,7 +15,6 @@ from astropy import constants as const
 import random
 import astropy.constants as const
 import math
-from tqdm import tqdm
 import extinction as ex
 import pdb
 import glob
@@ -405,6 +404,10 @@ def empiricalMdot(mass, scalefactor=1.79941029, intercept=7.99351629):
     
     return (Mdot)
 
+
+#Below is a pickle file containing the exponential fit, and a function that calculates intercept from it given age
+#I eventually discarded this function for the one below it in order to take into account fit error
+
 #Load in age to intercept function
 with open('ageinterceptfunc.pickle', 'rb') as f:
     age_to_intercept_func = pickle.load(f)
@@ -422,6 +425,10 @@ def getIntercept(age):
     '''
     return age_to_intercept_func(age)
     
+    
+#Below is the current implementation of the age scatter which takes into account the error of the exponential fit  
+    
+#popt and pcov below are the parameters and covariance matrix of the exponential fit I made between intercept and age   
 def age_intercept_exponential(age, popt=np.array([ 1.48749094,  0.50602283, -8.61059045]), 
     pcov=np.array([[ 9.66619837e-04,  3.79765397e-04, -2.74220068e-06],
                    [ 3.79765397e-04,  3.08006780e-04,  1.19773965e-04],
@@ -600,6 +607,9 @@ def Teff_to_SpTy(teff):
 ########### 2D Interpolation for Object Parameters ############
 ###### code shown below, functions saved as pickle files ######
 ##### This didn't end up being used, the 2D interpolation failed in certain ranges. #####
+    
+##### Implementing a successful 2-dimensional interpolation would be a great future project
+##### It would make age errors much more meaningful
 
 from astropy.io import ascii, fits
 #Load in the isochrones
